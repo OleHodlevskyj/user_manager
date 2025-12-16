@@ -1,0 +1,8 @@
+CREATE TABLE users (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name_first VARCHAR(100) NOT NULL,
+  name_last VARCHAR(100) NOT NULL,
+  status TINYINT(1) NOT NULL DEFAULT 1,
+  role ENUM('admin','user') NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
