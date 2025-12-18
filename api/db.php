@@ -1,5 +1,4 @@
 <?php
-header('Content-Type: application/json; charset=utf-8');
 
 $host = 'localhost';
 $db   = 'user_manager';
@@ -11,7 +10,6 @@ $dsn = "mysql:host=$host;dbname=$db;charset=$charset";
 
 try {
     $pdo = new PDO($dsn, $user, $pass);
-    echo('ok');
 } catch (PDOException $e) {
     http_response_code(500);
     echo json_encode([
