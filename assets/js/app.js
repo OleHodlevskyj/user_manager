@@ -1,8 +1,19 @@
 $(function () {
-  const userModal = new bootstrap.Modal(document.getElementById('userModal'));
-  const confirmDeleteModal = new bootstrap.Modal(document.getElementById('confirmDeleteModal'));
-  const warningNoUsersModal = new bootstrap.Modal(document.getElementById('warningNoUsersModal'));
-  const warningNoActionModal = new bootstrap.Modal(document.getElementById('warningNoActionModal'));
+  const userModal = new bootstrap.Modal(document.getElementById("userModal"));
+  const confirmDeleteModal = new bootstrap.Modal(
+    document.getElementById("confirmDeleteModal")
+  );
+  const warningNoUsersModal = new bootstrap.Modal(
+    document.getElementById("warningNoUsersModal")
+  );
+  const warningNoActionModal = new bootstrap.Modal(
+    document.getElementById("warningNoActionModal")
+  );
+  const confirmBulkDeleteModal = new bootstrap.Modal(
+    document.getElementById("confirmBulkDeleteModal")
+  );
+
+  console.log("All modals initialized");
 
   function escapeHtml(s) {
     return String(s)
@@ -16,13 +27,17 @@ $(function () {
   function loadUsers() {
     $.getJSON('api/users.php', { action: 'list' })
       .done(function (res) {
+        console.log("loadUsers response:", res);
+
         if (!res || !res.status) return;
 
         const tbody = $('#usersTable tbody');
         tbody.empty();
 
         (res.users || []).forEach(function (u) {
-          const statusDot = `<span class="status-dot ${Number(u.status) ? 'bg-success' : 'bg-secondary'}"></span>`;
+          const statusDot = `<span class="status-dot ${
+            Number(u.status) ? "bg-success" : "bg-secondary"
+          }"></span>`;
           tbody.append(`
             <tr data-id="${u.id}">
               <td><input type="checkbox" class="row-check"></td>
@@ -56,11 +71,39 @@ $(function () {
     $('#usersTable tbody .row-check').prop('checked', checked);
   });
 
-  $('#usersTable').off('change', '.row-check').on('change', '.row-check', function () {
-    const total = $('#usersTable tbody .row-check').length;
-    const checked = $('#usersTable tbody .row-check:checked').length;
-    $('#checkAll').prop('checked', total > 0 && total === checked);
+  $("#usersTable").on("change", ".row-check", function () {
+    const total = $("#usersTable tbody .row-check").length;
+    const checked = $("#usersTable tbody .row-check:checked").length;
+    $("#checkAll").prop("checked", total > 0 && total === checked);
+    console.log("Row check changed. Total:", total, "Checked:", checked);
   });
+
+  function clearValidation() {
+    $("#firstName, #lastName").removeClass("is-invalid");
+    $(".invalid-feedback").remove();
+  }
+
+  function validateForm() {
+    clearValidation();
+    let isValid = true;
+
+    const firstName = $("#firstName").val().trim();
+    const lastName = $("#lastName").val().trim();
+
+    if (!firstName) {
+      $("#firstName").addClass("is-invalid");
+      $("#firstName").after('<div class="invalid-feedback">Please enter first name</div>');
+      isValid = false;
+    }
+
+    if (!lastName) {
+      $("#lastName").addClass("is-invalid");
+      $("#lastName").after('<div class="invalid-feedback">Please enter last name</div>');
+      isValid = false;
+    }
+
+    return isValid;
+  }
 
   function openAddModal() {
     $('#userModalTitle').text('Add user');
@@ -99,6 +142,10 @@ $(function () {
   $('#userForm').off('submit').on('submit', function (e) {
     e.preventDefault();
 
+    if (!validateForm()) {
+      return;
+    }
+
     const payload = {
       action: $('#userId').val() ? 'update' : 'create',
       id: $('#userId').val(),
@@ -136,14 +183,18 @@ $(function () {
 
   let deleteId = null;
 
-  $('#usersTable').off('click', '.btn-delete').on('click', '.btn-delete', function () {
-    deleteId = $(this).closest('tr').data('id');
-    $('#deleteUserId').val(deleteId);
+  // Single delete
+  $("#usersTable").on("click", ".btn-delete", function () {
+    deleteId = $(this).closest("tr").data("id");
+    $("#deleteUserId").val(deleteId);
+    console.log("Showing confirmDeleteModal for user ID:", deleteId);
     confirmDeleteModal.show();
   });
 
-  $('#confirmDeleteBtn').off('click').on('click', function () {
+  $("#confirmDeleteBtn").on("click", function () {
     if (!deleteId) return;
+
+    console.log("Confirming delete for user ID:", deleteId);
 
     $.ajax({
       url: 'api/users.php?action=delete',
@@ -167,18 +218,47 @@ $(function () {
 
   function runBulk(selectId) {
     const actionType = $(selectId).val();
-    const ids = $('#usersTable tbody .row-check:checked')
-      .map(function () { return $(this).closest('tr').data('id'); })
+    const ids = $("#usersTable tbody .row-check:checked")
+      .map(function () {
+        return $(this).closest("tr").data("id");
+      })
       .get();
 
+    console.log("runBulk called", { selectId, actionType, ids });
+
     if (!ids.length) {
+      console.log("No users selected - showing warning");
       warningNoUsersModal.show();
       return;
     }
     if (!actionType) {
+      console.log("No action selected - showing warning");
       warningNoActionModal.show();
       return;
     }
+
+    if (actionType !== "delete") {
+      console.log("runBulk: non-delete action, calling doBulkRequest");
+      doBulkRequest(actionType, ids, selectId);
+      return;
+    }
+
+    console.log("runBulk: preparing bulk delete confirmation");
+
+    $("#confirmBulkDeleteBtn").data("bulk-ids", ids);
+    $("#confirmBulkDeleteBtn").data("bulk-select", selectId);
+    $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
+
+    console.log("runBulk: showing confirmBulkDeleteModal");
+    
+    confirmBulkDeleteModal.show();
+    
+    console.log("confirmBulkDeleteModal.show() called");
+  }
+
+  function doBulkRequest(actionType, ids, selectId) {
+    console.log("doBulkRequest called", { actionType, ids, selectId });
+    
     $.ajax({
       url: 'api/users.php?action=bulk',
       method: 'POST',
@@ -198,6 +278,37 @@ $(function () {
       });
   }
 
-  $('#btnBulkOk').off('click').on('click', function () { runBulk('#bulkAction'); });
-  $('#btnBulkOkBottom').off('click').on('click', function () { runBulk('#bulkActionBottom'); });
+  $("#confirmBulkDeleteBtn").on("click", function () {
+    const ids = $(this).data("bulk-ids") || [];
+    const selectId = $(this).data("bulk-select");
+    const actionType = $(this).data("bulk-action") || "delete";
+
+    console.log("Bulk delete confirmed", { ids, selectId, actionType });
+
+    if (!ids.length || !selectId) {
+      confirmBulkDeleteModal.hide();
+      return;
+    }
+
+    confirmBulkDeleteModal.hide();
+    doBulkRequest(actionType, ids, selectId);
+  });
+
+  console.log("Attaching bulk OK handlers with delegation...");
+  
+  $(document).on("click", "#btnBulkOk", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Top OK button clicked via delegation", e);
+    runBulk("#bulkAction");
+  });
+
+  $(document).on("click", "#btnBulkOkBottom", function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Bottom OK button clicked via delegation", e);
+    runBulk("#bulkActionBottom");
+  });
+
+  console.log("All event handlers attached");
 });
