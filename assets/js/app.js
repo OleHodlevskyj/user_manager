@@ -24,6 +24,44 @@ $(function () {
       .replaceAll("'", '&#039;');
   }
 
+  function prependUserRow(u) {
+    const statusDot = `<span class="status-dot ${
+      Number(u.status) ? "bg-success" : "bg-secondary"
+    }"></span>`;
+
+    const row = `
+      <tr data-id="${u.id}">
+        <td><input type="checkbox" class="row-check"></td>
+        <td>${escapeHtml(u.name_first)} ${escapeHtml(u.name_last)}</td>
+        <td>${statusDot}</td>
+        <td>${escapeHtml(u.role)}</td>
+        <td>
+          <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
+            <i class="bi bi-pencil"></i>
+          </button>
+          <button class="btn btn-sm btn-outline-danger btn-delete" type="button" title="Delete">
+            <i class="bi bi-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `;
+
+    $("#usersTable tbody").prepend(row);
+  }
+
+  function updateUserRow(userId, data) {
+    const row = $(`#usersTable tbody tr[data-id="${userId}"]`);
+    if (!row.length) return;
+
+    const statusDot = `<span class="status-dot ${
+      Number(data.status) ? "bg-success" : "bg-secondary"
+    }"></span>`;
+
+    row.find("td:eq(1)").text(`${data.name_first} ${data.name_last}`);
+    row.find("td:eq(2)").html(statusDot);
+    row.find("td:eq(3)").text(data.role);
+  }
+
   function loadUsers() {
     $.getJSON('api/users.php', { action: 'list' })
       .done(function (res) {
@@ -63,13 +101,11 @@ $(function () {
       });
   }
 
-  loadUsers();
-
   // Select all
   $('#checkAll').off('change').on('change', function () {
     const checked = $(this).is(':checked');
     $('#usersTable tbody .row-check').prop('checked', checked);
-  });
+    });
 
   $("#usersTable").on("change", ".row-check", function () {
     const total = $("#usersTable tbody .row-check").length;
@@ -121,78 +157,101 @@ $(function () {
   $('#usersTable').off('click', '.btn-edit').on('click', '.btn-edit', function () {
     const id = $(this).closest('tr').data('id');
 
-    $.getJSON('api/users.php', { action: 'get', id })
-      .done(function (res) {
-        if (!res || !res.status) return;
+      $.getJSON("api/users.php", { action: "get", id })
+        .done(function (res) {
+          if (!res || !res.status) return;
 
-        const u = res.user;
+          const u = res.user;
         $('#userModalTitle').text('Edit user');
         $('#userId').val(u.id);
         $('#firstName').val(u.name_first);
         $('#lastName').val(u.name_last);
         $('#statusSwitch').prop('checked', !!Number(u.status));
         $('#role').val(u.role);
-        userModal.show();
-      })
-      .fail(function (xhr) {
+          userModal.show();
+        })
+        .fail(function (xhr) {
         console.log('get FAIL:', xhr.status, xhr.responseText);
-      });
-  });
+        });
+    });
 
   $('#userForm').off('submit').on('submit', function (e) {
-    e.preventDefault();
+      e.preventDefault();
 
-    if (!validateForm()) {
-      return;
-    }
+      if (!validateForm()) {
+        return;
+      }
 
-    const payload = {
+      const payload = {
       action: $('#userId').val() ? 'update' : 'create',
       id: $('#userId').val(),
       name_first: $('#firstName').val().trim(),
       name_last: $('#lastName').val().trim(),
       status: $('#statusSwitch').is(':checked') ? 1 : 0,
       role: $('#role').val()
-    };
+      };
 
-    const $saveBtn = $('#userForm button[type="submit"]');
+      const $saveBtn = $('#userForm button[type="submit"]');
     $saveBtn.prop('disabled', true);
 
-    $.ajax({
+      $.ajax({
       url: 'api/users.php',
       method: 'POST',
-      data: payload,
+        data: payload,
       dataType: 'json'
-    })
-      .done(function (res) {
-        if (!res || !res.status) {
-          alert(res?.error?.message || 'Error');
-          return;
-        }
-        userModal.hide();
-        loadUsers();
       })
-      .fail(function (xhr) {
+        .done(function (res) {
+          if (!res || !res.status) {
+          alert(res?.error?.message || 'Error');
+            return;
+          }
+          userModal.hide();
+          if (payload.action === "create") {
+            const newUser = {
+              id: res.id,
+              name_first: payload.name_first,
+              name_last: payload.name_last,
+              status: payload.status,
+              role: payload.role,
+            };
+            prependUserRow(newUser);
+          } else {
+            updateUserRow(payload.id, {
+              name_first: payload.name_first,
+              name_last: payload.name_last,
+              status: payload.status,
+              role: payload.role,
+            });
+          }
+        })
+        .fail(function (xhr) {
         console.log('save FAIL:', xhr.status, xhr.responseText);
         alert('Request failed. Check console (F12).');
-      })
-      .always(function () {
+        })
+        .always(function () {
         $saveBtn.prop('disabled', false);
-      });
-  });
+        });
+    });
 
   let deleteId = null;
 
   // Single delete
   $("#usersTable").on("click", ".btn-delete", function () {
-    deleteId = $(this).closest("tr").data("id");
+    const row = $(this).closest("tr");
+    deleteId = row.data("id");
+
+    const userName = row.find("td:eq(1)").text().trim();
+
     $("#deleteUserId").val(deleteId);
-    console.log("Showing confirmDeleteModal for user ID:", deleteId);
+    $("#deleteUserName").text(userName);
+
     confirmDeleteModal.show();
   });
 
   $("#confirmDeleteBtn").on("click", function () {
     if (!deleteId) return;
+
+    const userIdToDelete = deleteId;
 
     console.log("Confirming delete for user ID:", deleteId);
 
@@ -209,7 +268,12 @@ $(function () {
         }
         confirmDeleteModal.hide();
         deleteId = null;
-        loadUsers();
+        confirmDeleteModal.hide();
+
+        $(`#usersTable tbody tr[data-id="${userIdToDelete}"]`).remove();
+
+        deleteId = null;
+        
       })
       .fail(function (xhr) {
         console.log('delete FAIL:', xhr.status, xhr.responseText);
@@ -250,33 +314,52 @@ $(function () {
     $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
 
     console.log("runBulk: showing confirmBulkDeleteModal");
-    
+
     confirmBulkDeleteModal.show();
-    
+
     console.log("confirmBulkDeleteModal.show() called");
   }
 
   function doBulkRequest(actionType, ids, selectId) {
-    console.log("doBulkRequest called", { actionType, ids, selectId });
-    
-    $.ajax({
+  console.log("doBulkRequest called", { actionType, ids, selectId });
+
+  $.ajax({
       url: 'api/users.php?action=bulk',
       method: 'POST',
-      data: { action_type: actionType, ids: ids },
+    data: { action_type: actionType, ids: ids },
       dataType: 'json'
-    })
-      .done(function (res) {
-        if (!res || !res.status) {
+  })
+    .done(function (res) {
+      if (!res || !res.status) {
           alert(res?.error?.message || 'Error');
-          return;
-        }
-        $(selectId).val('');
-        loadUsers();
-      })
-      .fail(function (xhr) {
+        return;
+      }
+      $(selectId).val("");
+      
+      // Оновлення DOM замість loadUsers():
+      if (actionType === "delete") {
+        ids.forEach(function (id) {
+          $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+        });
+      } else if (actionType === "set_active") {
+        ids.forEach(function (id) {
+          const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+          row.find("td:eq(2)").html('<span class="status-dot bg-success"></span>');
+        });
+      } else if (actionType === "set_not_active") {
+        ids.forEach(function (id) {
+          const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+          row.find("td:eq(2)").html('<span class="status-dot bg-secondary"></span>');
+        });
+      }
+      
+      $("#usersTable tbody .row-check:checked").prop("checked", false);
+      $("#checkAll").prop("checked", false);
+    })
+    .fail(function (xhr) {
         console.log('bulk FAIL:', xhr.status, xhr.responseText);
-      });
-  }
+    });
+}
 
   $("#confirmBulkDeleteBtn").on("click", function () {
     const ids = $(this).data("bulk-ids") || [];
@@ -295,7 +378,7 @@ $(function () {
   });
 
   console.log("Attaching bulk OK handlers with delegation...");
-  
+
   $(document).on("click", "#btnBulkOk", function (e) {
     e.preventDefault();
     e.stopPropagation();
