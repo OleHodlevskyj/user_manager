@@ -1,6 +1,11 @@
 <?php
 require __DIR__ . '/api/db.php';
 
+$ROLE_MAP=[
+    1=>"Admin",
+    2=>"User"
+];
+
 $stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id DESC");
 $users = $stmt->fetchAll();
 ?>
@@ -59,7 +64,7 @@ $users = $stmt->fetchAll();
                         <td>
                             <span class="status-dot <?= $u['status'] ? 'bg-success' : 'bg-secondary' ?>"></span>
                         </td>
-                        <td><?= htmlspecialchars($u['role']) ?></td>
+                        <td><?= htmlspecialchars($ROLE_MAP[$u['role']] ?? 'User') ?></td>
                         <td>
                             <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
                                 <i class="bi bi-pencil"></i>
@@ -123,8 +128,8 @@ $users = $stmt->fetchAll();
                     <div class="mb-3">
                         <label class="form-label">Role</label>
                         <select class="form-select" id="role">
-                            <option value="user">User</option>
-                            <option value="admin">Admin</option>
+                            <option value="2">User</option>
+                            <option value="1">Admin</option>
                         </select>
                     </div>
                 </div>

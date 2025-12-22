@@ -17,11 +17,11 @@ $(function () {
 
   function escapeHtml(s) {
     return String(s)
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#039;');
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
   }
 
   function prependUserRow(u) {
@@ -34,7 +34,7 @@ $(function () {
         <td><input type="checkbox" class="row-check"></td>
         <td>${escapeHtml(u.name_first)} ${escapeHtml(u.name_last)}</td>
         <td>${statusDot}</td>
-        <td>${escapeHtml(u.role)}</td>
+        <td>${escapeHtml(u.role_text)}</td>
         <td>
           <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
             <i class="bi bi-pencil"></i>
@@ -51,7 +51,12 @@ $(function () {
 
   function updateUserRow(userId, data) {
     const row = $(`#usersTable tbody tr[data-id="${userId}"]`);
-    if (!row.length) return;
+    if (!row.length) {
+      console.log("Row not found for userId:", userId);
+      return;
+    }
+
+    console.log("Updating row with data:", data);
 
     const statusDot = `<span class="status-dot ${
       Number(data.status) ? "bg-success" : "bg-secondary"
@@ -59,17 +64,19 @@ $(function () {
 
     row.find("td:eq(1)").text(`${data.name_first} ${data.name_last}`);
     row.find("td:eq(2)").html(statusDot);
-    row.find("td:eq(3)").text(data.role);
+    row.find("td:eq(3)").text(data.role_text);
+
+    console.log("Row updated, new status dot:", statusDot);
   }
 
   function loadUsers() {
-    $.getJSON('api/users.php', { action: 'list' })
+    $.getJSON("api/users.php", { action: "list" })
       .done(function (res) {
         console.log("loadUsers response:", res);
 
         if (!res || !res.status) return;
 
-        const tbody = $('#usersTable tbody');
+        const tbody = $("#usersTable tbody");
         tbody.empty();
 
         (res.users || []).forEach(function (u) {
@@ -81,7 +88,7 @@ $(function () {
               <td><input type="checkbox" class="row-check"></td>
               <td>${escapeHtml(u.name_first)} ${escapeHtml(u.name_last)}</td>
               <td>${statusDot}</td>
-              <td>${escapeHtml(u.role)}</td>
+              <td>${escapeHtml(u.role_text || "User")}</td>
               <td>
                 <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
                   <i class="bi bi-pencil"></i>
@@ -94,17 +101,19 @@ $(function () {
           `);
         });
 
-        $('#checkAll').prop('checked', false);
+        $("#checkAll").prop("checked", false);
       })
       .fail(function (xhr) {
-        console.log('loadUsers FAIL:', xhr.status, xhr.responseText);
+        console.log("loadUsers FAIL:", xhr.status, xhr.responseText);
       });
   }
 
   // Select all
-  $('#checkAll').off('change').on('change', function () {
-    const checked = $(this).is(':checked');
-    $('#usersTable tbody .row-check').prop('checked', checked);
+  $("#checkAll")
+    .off("change")
+    .on("change", function () {
+      const checked = $(this).is(":checked");
+      $("#usersTable tbody .row-check").prop("checked", checked);
     });
 
   $("#usersTable").on("change", ".row-check", function () {
@@ -127,109 +136,142 @@ $(function () {
     const lastName = $("#lastName").val().trim();
 
     if (!firstName) {
-      $("#firstName").addClass("is-invalid");
-      $("#firstName").after('<div class="invalid-feedback">Please enter first name</div>');
+      $("#firstName")
+        .addClass("is-invalid")
+        .after('<div class="invalid-feedback">Please enter first name</div>');
       isValid = false;
     }
 
     if (!lastName) {
-      $("#lastName").addClass("is-invalid");
-      $("#lastName").after('<div class="invalid-feedback">Please enter last name</div>');
+      $("#lastName")
+        .addClass("is-invalid")
+        .after('<div class="invalid-feedback">Please enter last name</div>');
       isValid = false;
     }
 
     return isValid;
   }
 
+  $("#firstName").on("input", function () {
+    if ($(this).val().trim() !== "") {
+      $(this).removeClass("is-invalid");
+      $(this).next(".invalid-feedback").remove();
+    }
+  });
+
+  $("#lastName").on("input", function () {
+    if ($(this).val().trim() !== "") {
+      $(this).removeClass("is-invalid");
+      $(this).next(".invalid-feedback").remove();
+    }
+  });
+
   function openAddModal() {
-    $('#userModalTitle').text('Add user');
-    $('#userId').val('');
-    $('#firstName').val('');
-    $('#lastName').val('');
-    $('#statusSwitch').prop('checked', true);
-    $('#role').val('user');
+    $("#userModalTitle").text("Add user");
+    $("#userId").val("");
+    $("#firstName").val("");
+    $("#lastName").val("");
+    $("#statusSwitch").prop("checked", true);
+    $("#role").val("2");
+    clearValidation();
     userModal.show();
   }
 
-  $('#btnAddUser, #btnAddUserBottom').off('click').on('click', openAddModal);
+  $("#btnAddUser, #btnAddUserBottom").off("click").on("click", openAddModal);
 
   // Edit
-  $('#usersTable').off('click', '.btn-edit').on('click', '.btn-edit', function () {
-    const id = $(this).closest('tr').data('id');
+  $("#usersTable")
+    .off("click", ".btn-edit")
+    .on("click", ".btn-edit", function () {
+      const id = $(this).closest("tr").data("id");
 
       $.getJSON("api/users.php", { action: "get", id })
         .done(function (res) {
           if (!res || !res.status) return;
 
           const u = res.user;
-        $('#userModalTitle').text('Edit user');
-        $('#userId').val(u.id);
-        $('#firstName').val(u.name_first);
-        $('#lastName').val(u.name_last);
-        $('#statusSwitch').prop('checked', !!Number(u.status));
-        $('#role').val(u.role);
+          $("#userModalTitle").text("Edit user");
+          $("#userId").val(u.id);
+          $("#firstName").val(u.name_first);
+          $("#lastName").val(u.name_last);
+          $("#statusSwitch").prop("checked", !!Number(u.status));
+          $("#role").val(String(u.role));
+          clearValidation();
           userModal.show();
         })
         .fail(function (xhr) {
-        console.log('get FAIL:', xhr.status, xhr.responseText);
+          console.log("get FAIL:", xhr.status, xhr.responseText);
         });
     });
 
-  $('#userForm').off('submit').on('submit', function (e) {
+  $("#userForm")
+    .off("submit")
+    .on("submit", function (e) {
       e.preventDefault();
 
       if (!validateForm()) {
         return;
       }
 
+      const roleText = $("#role option:selected").text();
+
+      const currentStatus = $("#statusSwitch").is(":checked") ? 1 : 0;
+
       const payload = {
-      action: $('#userId').val() ? 'update' : 'create',
-      id: $('#userId').val(),
-      name_first: $('#firstName').val().trim(),
-      name_last: $('#lastName').val().trim(),
-      status: $('#statusSwitch').is(':checked') ? 1 : 0,
-      role: $('#role').val()
+        action: $("#userId").val() ? "update" : "create",
+        id: $("#userId").val(),
+        name_first: $("#firstName").val().trim(),
+        name_last: $("#lastName").val().trim(),
+        status: currentStatus,
+        role: $("#role").val(),
       };
 
+      console.log("Submitting payload:", payload);
+
       const $saveBtn = $('#userForm button[type="submit"]');
-    $saveBtn.prop('disabled', true);
+      $saveBtn.prop("disabled", true);
 
       $.ajax({
-      url: 'api/users.php',
-      method: 'POST',
+        url: "api/users.php",
+        method: "POST",
         data: payload,
-      dataType: 'json'
+        dataType: "json",
       })
         .done(function (res) {
           if (!res || !res.status) {
-          alert(res?.error?.message || 'Error');
+            alert(res?.error?.message || "Error");
             return;
           }
+
+          console.log("Save successful, response:", res);
+
           userModal.hide();
+
           if (payload.action === "create") {
             const newUser = {
               id: res.id,
               name_first: payload.name_first,
               name_last: payload.name_last,
               status: payload.status,
-              role: payload.role,
+              role_text: roleText,
             };
             prependUserRow(newUser);
           } else {
+            console.log("Updating row with status:", payload.status);
             updateUserRow(payload.id, {
               name_first: payload.name_first,
               name_last: payload.name_last,
               status: payload.status,
-              role: payload.role,
+              role_text: roleText,
             });
           }
         })
         .fail(function (xhr) {
-        console.log('save FAIL:', xhr.status, xhr.responseText);
-        alert('Request failed. Check console (F12).');
+          console.log("save FAIL:", xhr.status, xhr.responseText);
+          alert("Request failed. Check console (F12).");
         })
         .always(function () {
-        $saveBtn.prop('disabled', false);
+          $saveBtn.prop("disabled", false);
         });
     });
 
@@ -256,27 +298,23 @@ $(function () {
     console.log("Confirming delete for user ID:", deleteId);
 
     $.ajax({
-      url: 'api/users.php?action=delete',
-      method: 'POST',
+      url: "api/users.php?action=delete",
+      method: "POST",
       data: { id: deleteId },
-      dataType: 'json'
+      dataType: "json",
     })
       .done(function (res) {
         if (!res || !res.status) {
-          alert(res?.error?.message || 'Error');
+          alert(res?.error?.message || "Error");
           return;
         }
         confirmDeleteModal.hide();
         deleteId = null;
-        confirmDeleteModal.hide();
 
         $(`#usersTable tbody tr[data-id="${userIdToDelete}"]`).remove();
-
-        deleteId = null;
-        
       })
       .fail(function (xhr) {
-        console.log('delete FAIL:', xhr.status, xhr.responseText);
+        console.log("delete FAIL:", xhr.status, xhr.responseText);
       });
   });
 
@@ -321,45 +359,48 @@ $(function () {
   }
 
   function doBulkRequest(actionType, ids, selectId) {
-  console.log("doBulkRequest called", { actionType, ids, selectId });
+    console.log("doBulkRequest called", { actionType, ids, selectId });
 
-  $.ajax({
-      url: 'api/users.php?action=bulk',
-      method: 'POST',
-    data: { action_type: actionType, ids: ids },
-      dataType: 'json'
-  })
-    .done(function (res) {
-      if (!res || !res.status) {
-          alert(res?.error?.message || 'Error');
-        return;
-      }
-      $(selectId).val("");
-      
-      // Оновлення DOM замість loadUsers():
-      if (actionType === "delete") {
-        ids.forEach(function (id) {
-          $(`#usersTable tbody tr[data-id="${id}"]`).remove();
-        });
-      } else if (actionType === "set_active") {
-        ids.forEach(function (id) {
-          const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-          row.find("td:eq(2)").html('<span class="status-dot bg-success"></span>');
-        });
-      } else if (actionType === "set_not_active") {
-        ids.forEach(function (id) {
-          const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-          row.find("td:eq(2)").html('<span class="status-dot bg-secondary"></span>');
-        });
-      }
-      
-      $("#usersTable tbody .row-check:checked").prop("checked", false);
-      $("#checkAll").prop("checked", false);
+    $.ajax({
+      url: "api/users.php?action=bulk",
+      method: "POST",
+      data: { action_type: actionType, ids: ids },
+      dataType: "json",
     })
-    .fail(function (xhr) {
-        console.log('bulk FAIL:', xhr.status, xhr.responseText);
-    });
-}
+      .done(function (res) {
+        if (!res || !res.status) {
+          alert(res?.error?.message || "Error");
+          return;
+        }
+        $(selectId).val("");
+
+        if (actionType === "delete") {
+          ids.forEach(function (id) {
+            $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+          });
+        } else if (actionType === "set_active") {
+          ids.forEach(function (id) {
+            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+            row
+              .find("td:eq(2)")
+              .html('<span class="status-dot bg-success"></span>');
+          });
+        } else if (actionType === "set_not_active") {
+          ids.forEach(function (id) {
+            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+            row
+              .find("td:eq(2)")
+              .html('<span class="status-dot bg-secondary"></span>');
+          });
+        }
+
+        $("#usersTable tbody .row-check:checked").prop("checked", false);
+        $("#checkAll").prop("checked", false);
+      })
+      .fail(function (xhr) {
+        console.log("bulk FAIL:", xhr.status, xhr.responseText);
+      });
+  }
 
   $("#confirmBulkDeleteBtn").on("click", function () {
     const ids = $(this).data("bulk-ids") || [];

@@ -5,6 +5,11 @@ header('Content-Type: application/json; charset=utf-8');
 
 require __DIR__ . '/db.php';
 
+$ROLE_MAP=[
+    1=>"Admin",
+    2=>"User"
+];
+
 function jsonOk(array $data = []): void {
     echo json_encode(array_merge(['status' => true, 'error' => null], $data), JSON_UNESCAPED_UNICODE);
     exit;
@@ -28,6 +33,11 @@ switch ($action) {
     case 'list': {
         $stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id DESC");
         $users = $stmt->fetchAll();
+        
+        foreach ($users as &$user) {
+            $user['role_text'] = $ROLE_MAP[$user['role']] ?? 'User';
+        }
+        
         jsonOk(['users' => $users]);
         break;
     }
@@ -41,6 +51,9 @@ switch ($action) {
         $user = $stmt->fetch();
 
         if (!$user) jsonErr(100, 'not found user');
+        
+        $user['role_text'] = $ROLE_MAP[$user['role']] ?? 'User';
+        
         jsonOk(['user' => $user]);
         break;
     }
@@ -49,16 +62,21 @@ switch ($action) {
         $first  = trim($_POST['name_first'] ?? '');
         $last   = trim($_POST['name_last'] ?? '');
         $status = isset($_POST['status']) ? (int)$_POST['status'] : 0;
-        $role   = $_POST['role'] ?? 'user';
+        $role   = $_POST['role'] ? (int)$_POST['role'] : 2;
 
-        if ($first === '' || $last === '' || !in_array($role, ['admin', 'user'], true)) {
+        if ($first === '' || $last === '' || !isset($ROLE_MAP[$role])) {
             jsonErr(102, 'Validation error: empty or invalid fields');
         }
 
         $stmt = $pdo->prepare("INSERT INTO users (name_first, name_last, status, role) VALUES (?,?,?,?)");
         $stmt->execute([$first, $last, $status, $role]);
 
-        jsonOk(['id' => (int)$pdo->lastInsertId()]);
+        $newId = (int)$pdo->lastInsertId();
+
+        jsonOk([
+            'id' => $newId,
+            'role_text' => $ROLE_MAP[$role]
+        ]);
         break;
     }
 
@@ -67,17 +85,20 @@ switch ($action) {
         $first  = trim($_POST['name_first'] ?? '');
         $last   = trim($_POST['name_last'] ?? '');
         $status = isset($_POST['status']) ? (int)$_POST['status'] : 0;
-        $role   = $_POST['role'] ?? 'user';
+        $role   = $_POST['role'] ? (int)$_POST['role'] : 2;
 
         if ($id <= 0) jsonErr(101, 'Invalid id');
-        if ($first === '' || $last === '' || !in_array($role, ['admin', 'user'], true)) {
+        if ($first === '' || $last === '' || !isset($ROLE_MAP[$role])) {
             jsonErr(102, 'Validation error: empty or invalid fields');
         }
 
         $stmt = $pdo->prepare("UPDATE users SET name_first=?, name_last=?, status=?, role=? WHERE id=?");
         $stmt->execute([$first, $last, $status, $role, $id]);
 
-        jsonOk(['id' => $id]);
+        jsonOk([
+            'id' => $id,
+            'role_text' => $ROLE_MAP[$role]
+        ]);
         break;
     }
 
@@ -115,9 +136,7 @@ switch ($action) {
         }
 
         jsonOk();
-
         break;
-        
     }
 
     default:
