@@ -15,6 +15,14 @@ $(function () {
 
   console.log("All modals initialized");
 
+  const infoModal = new bootstrap.Modal(document.getElementById("infoModal"));
+
+  function showInfoModal(message, title = "Message") {
+    $("#infoModalTitle").text(title);
+    $("#infoModalBody").text(message);
+    infoModal.show();
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replaceAll("&", "&amp;")
@@ -187,7 +195,10 @@ $(function () {
 
       $.getJSON("api/users.php", { action: "get", id })
         .done(function (res) {
-          if (!res || !res.status) return;
+          if (!res || !res.status) {
+            showInfoModal(res?.error?.message || "Error", "Error");
+            return;
+          }
 
           const u = res.user;
           $("#userModalTitle").text("Edit user");
@@ -201,6 +212,7 @@ $(function () {
         })
         .fail(function (xhr) {
           console.log("get FAIL:", xhr.status, xhr.responseText);
+          showInfoModal("An error occurred while fetching user data", "Error");
         });
     });
 
@@ -256,6 +268,11 @@ $(function () {
               role_text: roleText,
             };
             prependUserRow(newUser);
+            if ($("#checkAll").is(":checked")) {
+              $(
+                "#usersTable tbody tr[data-id='" + newUser.id + "'] .row-check"
+              ).prop("checked", true);
+            }
           } else {
             console.log("Updating row with status:", payload.status);
             updateUserRow(payload.id, {
@@ -268,7 +285,7 @@ $(function () {
         })
         .fail(function (xhr) {
           console.log("save FAIL:", xhr.status, xhr.responseText);
-          alert("Request failed. Check console (F12).");
+          showInfoModal("An error occurred while saving", "Error");
         })
         .always(function () {
           $saveBtn.prop("disabled", false);
@@ -305,7 +322,7 @@ $(function () {
     })
       .done(function (res) {
         if (!res || !res.status) {
-          alert(res?.error?.message || "Error");
+          showInfoModal(res?.error?.message || "Error", "Error");
           return;
         }
         confirmDeleteModal.hide();
