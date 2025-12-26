@@ -32,6 +32,23 @@ $(function () {
       .replaceAll("'", "&#039;");
   }
 
+  function updateSelectAllCheckbox() {
+    const totalCheckboxes = $("#usersTable tbody .row-check").length;
+    const checkedCheckboxes = $("#usersTable tbody .row-check:checked").length;
+
+    console.log(
+      `updateSelectAllCheckbox - Total: ${totalCheckboxes}, Checked: ${checkedCheckboxes}`
+    );
+
+    if (totalCheckboxes === 0 || checkedCheckboxes === 0) {
+      $("#checkAll").prop("checked", false);
+    } else if (checkedCheckboxes === totalCheckboxes) {
+      $("#checkAll").prop("checked", true);
+    } else {
+      $("#checkAll").prop("checked", false);
+    }
+  }
+
   function prependUserRow(u) {
     const statusDot = `<span class="status-dot ${
       Number(u.status) ? "bg-success" : "bg-secondary"
@@ -54,7 +71,7 @@ $(function () {
       </tr>
     `;
 
-    $("#usersTable tbody").prepend(row);
+    $("#usersTable tbody").append(row);
   }
 
   function updateUserRow(userId, data) {
@@ -125,9 +142,10 @@ $(function () {
     });
 
   $("#usersTable").on("change", ".row-check", function () {
+    updateSelectAllCheckbox();
+
     const total = $("#usersTable tbody .row-check").length;
     const checked = $("#usersTable tbody .row-check:checked").length;
-    $("#checkAll").prop("checked", total > 0 && total === checked);
     console.log("Row check changed. Total:", total, "Checked:", checked);
   });
 
@@ -196,7 +214,16 @@ $(function () {
       $.getJSON("api/users.php", { action: "get", id })
         .done(function (res) {
           if (!res || !res.status) {
-            showInfoModal(res?.error?.message || "Error", "Error");
+            if (res?.error?.code === 100) {
+              $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+              updateSelectAllCheckbox();
+              showInfoModal(
+                "This user has been deleted. The row has been removed.",
+                "User Not Found"
+              );
+            } else {
+              showInfoModal(res?.error?.message || "Error", "Error");
+            }
             return;
           }
 
@@ -212,7 +239,13 @@ $(function () {
         })
         .fail(function (xhr) {
           console.log("get FAIL:", xhr.status, xhr.responseText);
-          showInfoModal("An error occurred while fetching user data", "Error");
+
+          $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+          updateSelectAllCheckbox();
+          showInfoModal(
+            "An error occurred while fetching user data. The user may have been deleted.",
+            "Error"
+          );
         });
     });
 
@@ -226,12 +259,12 @@ $(function () {
       }
 
       const roleText = $("#role option:selected").text();
-
       const currentStatus = $("#statusSwitch").is(":checked") ? 1 : 0;
+      const userId = $("#userId").val();
 
       const payload = {
-        action: $("#userId").val() ? "update" : "create",
-        id: $("#userId").val(),
+        action: userId ? "update" : "create",
+        id: userId,
         name_first: $("#firstName").val().trim(),
         name_last: $("#lastName").val().trim(),
         status: currentStatus,
@@ -251,12 +284,21 @@ $(function () {
       })
         .done(function (res) {
           if (!res || !res.status) {
-            alert(res?.error?.message || "Error");
+            if (res?.error?.code === 107) {
+              userModal.hide();
+              $(`#usersTable tbody tr[data-id="${userId}"]`).remove();
+              updateSelectAllCheckbox();
+              showInfoModal(
+                "This user has been deleted by another session. The row has been removed.",
+                "User Not Found"
+              );
+            } else {
+              showInfoModal(res?.error?.message || "Error", "Error");
+            }
             return;
           }
 
           console.log("Save successful, response:", res);
-
           userModal.hide();
 
           if (payload.action === "create") {
@@ -270,7 +312,7 @@ $(function () {
             prependUserRow(newUser);
             if ($("#checkAll").is(":checked")) {
               $(
-                "#usersTable tbody tr[data-id='" + newUser.id + "'] .row-check"
+                `#usersTable tbody tr[data-id='${newUser.id}'] .row-check`
               ).prop("checked", true);
             }
           } else {
@@ -326,22 +368,180 @@ $(function () {
           return;
         }
         confirmDeleteModal.hide();
-        deleteId = null;
 
+        //видалити рядок з DOM
         $(`#usersTable tbody tr[data-id="${userIdToDelete}"]`).remove();
+
+        updateSelectAllCheckbox();
+
+        deleteId = null;
       })
       .fail(function (xhr) {
         console.log("delete FAIL:", xhr.status, xhr.responseText);
       });
   });
 
+  function validateAndRunBulk(actionType, ids, selectId) {
+    $.ajax({
+      url: "api/users.php?action=validate_ids",
+      method: "POST",
+      data: { ids: ids },
+      dataType: "json",
+    })
+      .done(function (res) {
+        if (!res || !res.status) {
+          showInfoModal(res?.error?.message || "Error", "Error");
+          return;
+        }
+
+        const validIds = res.valid_ids || [];
+        const invalidIds = ids.filter((id) => !validIds.includes(id));
+
+        console.log("Valid IDs:", validIds);
+        console.log("Invalid IDs (deleted elsewhere):", invalidIds);
+
+        if (invalidIds.length > 0) {
+          const message = `${invalidIds.length} user(s) have been deleted by another session and cannot be processed.`;
+          showInfoModal(message, "Warning");
+
+          if (actionType === "delete") {
+            invalidIds.forEach(function (id) {
+              $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+            });
+            updateSelectAllCheckbox();
+          } else {
+            invalidIds.forEach(function (id) {
+              $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
+                "checked",
+                false
+              );
+            });
+            updateSelectAllCheckbox();
+          }
+        }
+
+        if (validIds.length === 0) {
+          return;
+        }
+
+        // bulk тільки з valid ids
+        if (actionType !== "delete") {
+          doBulkRequest(actionType, validIds, selectId);
+        } else {
+          $("#confirmBulkDeleteBtn").data("bulk-ids", validIds);
+          $("#confirmBulkDeleteBtn").data("bulk-select", selectId);
+          $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
+          confirmBulkDeleteModal.show();
+        }
+      })
+      .fail(function (xhr) {
+        console.log("validate FAIL:", xhr.status, xhr.responseText);
+        showInfoModal("An error occurred during validation", "Error");
+      });
+  }
+
+  function doBulkRequest(actionType, ids, selectId) {
+    console.log("doBulkRequest called", { actionType, ids, selectId });
+
+    $.ajax({
+      url: "api/users.php?action=bulk",
+      method: "POST",
+      data: { action_type: actionType, ids: ids },
+      dataType: "json",
+    })
+      .done(function (res) {
+        console.log("BULK RESPONSE:", res);
+
+        if (!res || !res.status) {
+          showInfoModal(res?.error?.message || "Error", "Error");
+          return;
+        }
+
+        $(selectId).val("");
+
+        const processedIds = res.processed_ids || [];
+        const notProcessed = ids.filter((id) => !processedIds.includes(id));
+
+        console.log("IDs sent:", ids);
+        console.log("Processed:", processedIds);
+        console.log("Not processed:", notProcessed);
+
+        if (actionType === "delete") {
+          processedIds.forEach(function (id) {
+            console.log(`Deleting row ${id}`);
+            $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+          });
+
+          if (notProcessed.length > 0) {
+            console.log("REMOVING NOT PROCESSED ROWS:", notProcessed);
+            notProcessed.forEach(function (id) {
+              $(`#usersTable tbody tr[data-id="${id}"]`).remove();
+            });
+          }
+        } else if (actionType === "set_active") {
+          processedIds.forEach(function (id) {
+            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+            console.log(`Setting active for ${id}, row found:`, row.length > 0);
+            row
+              .find("td:eq(2)")
+              .html('<span class="status-dot bg-success"></span>');
+          });
+
+          if (notProcessed.length > 0) {
+            console.log("Unchecking not processed rows:", notProcessed);
+            notProcessed.forEach(function (id) {
+              $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
+                "checked",
+                false
+              );
+            });
+          }
+        } else if (actionType === "set_not_active") {
+          processedIds.forEach(function (id) {
+            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
+            console.log(
+              `Setting not active for ${id}, row found:`,
+              row.length > 0
+            );
+            row
+              .find("td:eq(2)")
+              .html('<span class="status-dot bg-secondary"></span>');
+          });
+
+          if (notProcessed.length > 0) {
+            console.log("Unchecking not processed rows:", notProcessed);
+            notProcessed.forEach(function (id) {
+              $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
+                "checked",
+                false
+              );
+            });
+          }
+        }
+
+        //зняти всі чекбокси після операції
+        $("#usersTable tbody .row-check:checked").prop("checked", false);
+
+        // Select All
+        updateSelectAllCheckbox();
+      })
+      .fail(function (xhr) {
+        console.log("bulk FAIL:", xhr.status, xhr.responseText);
+        showInfoModal("An error occurred during bulk operation", "Error");
+      });
+  }
+
   function runBulk(selectId) {
     const actionType = $(selectId).val();
-    const ids = $("#usersTable tbody .row-check:checked")
-      .map(function () {
-        return $(this).closest("tr").data("id");
-      })
-      .get();
+
+    //збираємо ID з DOM
+    const ids = [];
+    $("#usersTable tbody tr").each(function () {
+      const checkbox = $(this).find(".row-check");
+      if (checkbox.length > 0 && checkbox.is(":checked")) {
+        ids.push($(this).data("id"));
+      }
+    });
 
     console.log("runBulk called", { selectId, actionType, ids });
 
@@ -356,67 +556,8 @@ $(function () {
       return;
     }
 
-    if (actionType !== "delete") {
-      console.log("runBulk: non-delete action, calling doBulkRequest");
-      doBulkRequest(actionType, ids, selectId);
-      return;
-    }
-
-    console.log("runBulk: preparing bulk delete confirmation");
-
-    $("#confirmBulkDeleteBtn").data("bulk-ids", ids);
-    $("#confirmBulkDeleteBtn").data("bulk-select", selectId);
-    $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
-
-    console.log("runBulk: showing confirmBulkDeleteModal");
-
-    confirmBulkDeleteModal.show();
-
-    console.log("confirmBulkDeleteModal.show() called");
-  }
-
-  function doBulkRequest(actionType, ids, selectId) {
-    console.log("doBulkRequest called", { actionType, ids, selectId });
-
-    $.ajax({
-      url: "api/users.php?action=bulk",
-      method: "POST",
-      data: { action_type: actionType, ids: ids },
-      dataType: "json",
-    })
-      .done(function (res) {
-        if (!res || !res.status) {
-          alert(res?.error?.message || "Error");
-          return;
-        }
-        $(selectId).val("");
-
-        if (actionType === "delete") {
-          ids.forEach(function (id) {
-            $(`#usersTable tbody tr[data-id="${id}"]`).remove();
-          });
-        } else if (actionType === "set_active") {
-          ids.forEach(function (id) {
-            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-            row
-              .find("td:eq(2)")
-              .html('<span class="status-dot bg-success"></span>');
-          });
-        } else if (actionType === "set_not_active") {
-          ids.forEach(function (id) {
-            const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-            row
-              .find("td:eq(2)")
-              .html('<span class="status-dot bg-secondary"></span>');
-          });
-        }
-
-        $("#usersTable tbody .row-check:checked").prop("checked", false);
-        $("#checkAll").prop("checked", false);
-      })
-      .fail(function (xhr) {
-        console.log("bulk FAIL:", xhr.status, xhr.responseText);
-      });
+    //перевірка існування користувачів
+    validateAndRunBulk(actionType, ids, selectId);
   }
 
   $("#confirmBulkDeleteBtn").on("click", function () {

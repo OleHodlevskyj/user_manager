@@ -34,7 +34,7 @@ if ($action === '') {
 
 switch ($action) {
     case 'list': {
-            $stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id DESC");
+            $stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id ASC");
             $users = $stmt->fetchAll();
 
             foreach ($users as &$user) {
@@ -95,17 +95,40 @@ switch ($action) {
                 jsonErr(102, 'Validation error: empty or invalid fields');
             }
 
+            // існування користувача
+            $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE id=?");
+            $stmt->execute([$id]);
+            if ((int)$stmt->fetchColumn() === 0) {
+                jsonErr(107, 'User not found for update');
+            }
+
             $stmt = $pdo->prepare("UPDATE users SET name_first=?, name_last=?, status=?, role=? WHERE id=?");
             $stmt->execute([$first, $last, $status, $role, $id]);
-
-            if ($stmt->rowCount() === 0) {
-                jsonErr(105, 'User not found for update');
-            }
 
             jsonOk([
                 'id' => $id,
                 'role_text' => $ROLE_MAP[$role]
             ]);
+            break;
+        }
+
+    case 'validate_ids': {
+            //перевірка які ID існують в базі
+            $ids = $_POST['ids'] ?? [];
+
+            if (!is_array($ids) || count($ids) === 0) {
+                jsonErr(103, 'No ids provided');
+            }
+
+            $ids = array_map('intval', $ids);
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+            // знайти які ID в базі
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($placeholders)");
+            $stmt->execute($ids);
+            $validIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            jsonOk(['valid_ids' => $validIds]);
             break;
         }
 
@@ -116,7 +139,7 @@ switch ($action) {
             $stmt = $pdo->prepare("DELETE FROM users WHERE id=?");
             $stmt->execute([$id]);
 
-            jsonOk(['id' => $id]);
+            jsonOk(['processed_ids' => [$id]]);
             break;
         }
 
@@ -124,25 +147,39 @@ switch ($action) {
             $actionType = $_POST['action_type'] ?? '';
             $ids = $_POST['ids'] ?? [];
 
-            if (!is_array($ids) || count($ids) === 0) jsonErr(103, 'No ids');
-            $ids = array_map('intval', $ids);
+            if (!is_array($ids) || count($ids) === 0) {
+                jsonErr(103, 'No ids');
+            }
 
+            $ids = array_map('intval', $ids);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
+            $stmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($placeholders)");
+            $stmt->execute($ids);
+            $existingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (count($existingIds) === 0) {
+                jsonErr(106, 'None of the selected users exist');
+            }
+
+            // новий список placeholders тільки для існуючих
+            $placeholders2 = implode(',', array_fill(0, count($existingIds), '?'));
+
             if ($actionType === 'set_active') {
-                $stmt = $pdo->prepare("UPDATE users SET status=1 WHERE id IN ($placeholders)");
-                $stmt->execute($ids);
+                $stmt = $pdo->prepare("UPDATE users SET status=1 WHERE id IN ($placeholders2)");
+                $stmt->execute($existingIds);
             } elseif ($actionType === 'set_not_active') {
-                $stmt = $pdo->prepare("UPDATE users SET status=0 WHERE id IN ($placeholders)");
-                $stmt->execute($ids);
+                $stmt = $pdo->prepare("UPDATE users SET status=0 WHERE id IN ($placeholders2)");
+                $stmt->execute($existingIds);
             } elseif ($actionType === 'delete') {
-                $stmt = $pdo->prepare("DELETE FROM users WHERE id IN ($placeholders)");
-                $stmt->execute($ids);
+                $stmt = $pdo->prepare("DELETE FROM users WHERE id IN ($placeholders2)");
+                $stmt->execute($existingIds);
             } else {
                 jsonErr(104, 'Unknown bulk action');
             }
 
-            jsonOk();
+            //повертати тільки ті ID, що реально оброблені
+            jsonOk(['processed_ids' => $existingIds]);
             break;
         }
 

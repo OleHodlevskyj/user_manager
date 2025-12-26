@@ -6,7 +6,7 @@ $ROLE_MAP = [
     2 => "User"
 ];
 
-$stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id DESC");
+$stmt = $pdo->query("SELECT id, name_first, name_last, status, role FROM users ORDER BY id ASC");
 $users = $stmt->fetchAll();
 ?>
 
