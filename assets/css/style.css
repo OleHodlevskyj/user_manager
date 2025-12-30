@@ -3,4 +3,9 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
+  background-color: #6c757d;
+}
+
+.status-dot.active {
+  background-color: #28a745;
 }
