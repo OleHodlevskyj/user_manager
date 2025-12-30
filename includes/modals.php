@@ -31,10 +31,12 @@
                 <div class="mb-3">
                     <label class="form-label">Role</label>
                     <select class="form-select" id="role">
-                        <option value="2">User</option>
-                        <option value="1">Admin</option>
+                        <?php foreach ($ROLE_MAP as $roleId => $roleName): ?>
+                            <option value="<?= $roleId ?>"><?= $roleName ?></option>
+                        <?php endforeach; ?>
                     </select>
                 </div>
+
             </div>
 
             <div class="modal-footer">
