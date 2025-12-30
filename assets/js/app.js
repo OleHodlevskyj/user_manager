@@ -1,21 +1,9 @@
 $(function () {
   const userModal = new bootstrap.Modal(document.getElementById("userModal"));
-  const confirmDeleteModal = new bootstrap.Modal(
-    document.getElementById("confirmDeleteModal")
-  );
-  const warningNoUsersModal = new bootstrap.Modal(
-    document.getElementById("warningNoUsersModal")
-  );
-  const warningNoActionModal = new bootstrap.Modal(
-    document.getElementById("warningNoActionModal")
-  );
-  const confirmBulkDeleteModal = new bootstrap.Modal(
-    document.getElementById("confirmBulkDeleteModal")
-  );
-
-  console.log("All modals initialized");
-
   const infoModal = new bootstrap.Modal(document.getElementById("infoModal"));
+  const confirmModal = new bootstrap.Modal(
+    document.getElementById("confirmModal")
+  );
 
   function showInfoModal(message, title = "Message") {
     $("#infoModalTitle").text(title);
@@ -23,6 +11,19 @@ $(function () {
     infoModal.show();
   }
 
+  function showConfirmModal(title, message, onConfirm) {
+    $("#confirmModalTitle").text(title);
+    $("#confirmModalBody").text(message);
+
+    $("#confirmModalBtn")
+      .off("click")
+      .on("click", function () {
+        confirmModal.hide();
+        if (onConfirm) onConfirm();
+      });
+
+    confirmModal.show();
+  }
   function escapeHtml(s) {
     return String(s)
       .replaceAll("&", "&amp;")
@@ -92,45 +93,6 @@ $(function () {
     row.find("td:eq(3)").text(data.role_text);
 
     console.log("Row updated, new status dot:", statusDot);
-  }
-
-  function loadUsers() {
-    $.getJSON("api/users.php", { action: "list" })
-      .done(function (res) {
-        console.log("loadUsers response:", res);
-
-        if (!res || !res.status) return;
-
-        const tbody = $("#usersTable tbody");
-        tbody.empty();
-
-        (res.users || []).forEach(function (u) {
-          const statusDot = `<span class="status-dot ${
-            Number(u.status) ? "bg-success" : "bg-secondary"
-          }"></span>`;
-          tbody.append(`
-            <tr data-id="${u.id}">
-              <td><input type="checkbox" class="row-check"></td>
-              <td>${escapeHtml(u.name_first)} ${escapeHtml(u.name_last)}</td>
-              <td>${statusDot}</td>
-              <td>${escapeHtml(u.role_text || "User")}</td>
-              <td>
-                <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
-                  <i class="bi bi-pencil"></i>
-                </button>
-                <button class="btn btn-sm btn-outline-danger btn-delete" type="button" title="Delete">
-                  <i class="bi bi-trash"></i>
-                </button>
-              </td>
-            </tr>
-          `);
-        });
-
-        $("#checkAll").prop("checked", false);
-      })
-      .fail(function (xhr) {
-        console.log("loadUsers FAIL:", xhr.status, xhr.responseText);
-      });
   }
 
   // Select all
@@ -330,197 +292,33 @@ $(function () {
   // Single delete
   $("#usersTable").on("click", ".btn-delete", function () {
     const row = $(this).closest("tr");
-    deleteId = row.data("id");
-
+    const userId = row.data("id");
     const userName = row.find("td:eq(1)").text().trim();
 
-    $("#deleteUserId").val(deleteId);
-    $("#deleteUserName").text(userName);
-
-    confirmDeleteModal.show();
+    showConfirmModal(
+      "Confirm delete",
+      `Are you sure you want to delete user ${userName}?`,
+      function () {
+        $.ajax({
+          url: "api/users.php?action=delete",
+          method: "POST",
+          data: { id: userId },
+          dataType: "json",
+        })
+          .done(function (res) {
+            if (!res || !res.status) {
+              showInfoModal(res?.error?.message || "Error", "Error");
+              return;
+            }
+            $(`#usersTable tbody tr[data-id="${userId}"]`).remove();
+            updateSelectAllCheckbox();
+          })
+          .fail(function (xhr) {
+            console.log("delete FAIL:", xhr.status, xhr.responseText);
+          });
+      }
+    );
   });
-
-  $("#confirmDeleteBtn").on("click", function () {
-    if (!deleteId) return;
-
-    const userIdToDelete = deleteId;
-
-    console.log("Confirming delete for user ID:", deleteId);
-
-    $.ajax({
-      url: "api/users.php?action=delete",
-      method: "POST",
-      data: { id: deleteId },
-      dataType: "json",
-    })
-      .done(function (res) {
-        if (!res || !res.status) {
-          showInfoModal(res?.error?.message || "Error", "Error");
-          return;
-        }
-        confirmDeleteModal.hide();
-
-        //видалити рядок з DOM
-        $(`#usersTable tbody tr[data-id="${userIdToDelete}"]`).remove();
-
-        updateSelectAllCheckbox();
-
-        deleteId = null;
-      })
-      .fail(function (xhr) {
-        console.log("delete FAIL:", xhr.status, xhr.responseText);
-      });
-  });
-
-  // function validateAndRunBulk(actionType, ids, selectId) {
-  //   $.ajax({
-  //     url: "api/users.php?action=validate_ids",
-  //     method: "POST",
-  //     data: { ids: ids },
-  //     dataType: "json",
-  //   })
-  //     .done(function (res) {
-  //       if (!res || !res.status) {
-  //         showInfoModal(res?.error?.message || "Error", "Error");
-  //         return;
-  //       }
-
-  //       const validIds = res.valid_ids || [];
-  //       const invalidIds = ids.filter((id) => !validIds.includes(id));
-
-  //       console.log("Valid IDs:", validIds);
-  //       console.log("Invalid IDs (deleted elsewhere):", invalidIds);
-
-  //       if (invalidIds.length > 0) {
-  //         const message = `${invalidIds.length} user(s) have been deleted by another session and cannot be processed.`;
-  //         showInfoModal(message, "Warning");
-
-  //         if (actionType === "delete") {
-  //           invalidIds.forEach(function (id) {
-  //             $(`#usersTable tbody tr[data-id="${id}"]`).remove();
-  //           });
-  //           updateSelectAllCheckbox();
-  //         } else {
-  //           invalidIds.forEach(function (id) {
-  //             $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
-  //               "checked",
-  //               false
-  //             );
-  //           });
-  //           updateSelectAllCheckbox();
-  //         }
-  //       }
-
-  //       if (validIds.length === 0) {
-  //         return;
-  //       }
-
-  //       // bulk тільки з valid ids
-  //       if (actionType !== "delete") {
-  //         doBulkRequest(actionType, validIds, selectId);
-  //       } else {
-  //         $("#confirmBulkDeleteBtn").data("bulk-ids", validIds);
-  //         $("#confirmBulkDeleteBtn").data("bulk-select", selectId);
-  //         $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
-  //         confirmBulkDeleteModal.show();
-  //       }
-  //     })
-  //     .fail(function (xhr) {
-  //       console.log("validate FAIL:", xhr.status, xhr.responseText);
-  //       showInfoModal("An error occurred during validation", "Error");
-  //     });
-  // }
-
-  // function doBulkRequest(actionType, ids, selectId) {
-  //   console.log("doBulkRequest called", { actionType, ids, selectId });
-
-  //   $.ajax({
-  //     url: "api/users.php?action=bulk",
-  //     method: "POST",
-  //     data: { action_type: actionType, ids: ids },
-  //     dataType: "json",
-  //   })
-  //     .done(function (res) {
-  //       console.log("BULK RESPONSE:", res);
-
-  //       if (!res || !res.status) {
-  //         showInfoModal(res?.error?.message || "Error", "Error");
-  //         return;
-  //       }
-
-  //       $(selectId).val("");
-
-  //       const processedIds = res.processed_ids || [];
-  //       const notProcessed = ids.filter((id) => !processedIds.includes(id));
-
-  //       console.log("IDs sent:", ids);
-  //       console.log("Processed:", processedIds);
-  //       console.log("Not processed:", notProcessed);
-
-  //       if (actionType === "delete") {
-  //         processedIds.forEach(function (id) {
-  //           console.log(`Deleting row ${id}`);
-  //           $(`#usersTable tbody tr[data-id="${id}"]`).remove();
-  //         });
-
-  //         if (notProcessed.length > 0) {
-  //           console.log("REMOVING NOT PROCESSED ROWS:", notProcessed);
-  //           notProcessed.forEach(function (id) {
-  //             $(`#usersTable tbody tr[data-id="${id}"]`).remove();
-  //           });
-  //         }
-  //       } else if (actionType === "set_active") {
-  //         processedIds.forEach(function (id) {
-  //           const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-  //           console.log(`Setting active for ${id}, row found:`, row.length > 0);
-  //           row
-  //             .find("td:eq(2)")
-  //             .html('<span class="status-dot bg-success"></span>');
-  //         });
-
-  //         if (notProcessed.length > 0) {
-  //           console.log("Unchecking not processed rows:", notProcessed);
-  //           notProcessed.forEach(function (id) {
-  //             $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
-  //               "checked",
-  //               false
-  //             );
-  //           });
-  //         }
-  //       } else if (actionType === "set_not_active") {
-  //         processedIds.forEach(function (id) {
-  //           const row = $(`#usersTable tbody tr[data-id="${id}"]`);
-  //           console.log(
-  //             `Setting not active for ${id}, row found:`,
-  //             row.length > 0
-  //           );
-  //           row
-  //             .find("td:eq(2)")
-  //             .html('<span class="status-dot bg-secondary"></span>');
-  //         });
-
-  //         if (notProcessed.length > 0) {
-  //           console.log("Unchecking not processed rows:", notProcessed);
-  //           notProcessed.forEach(function (id) {
-  //             $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
-  //               "checked",
-  //               false
-  //             );
-  //           });
-  //         }
-  //       }
-
-  //       //зняти всі чекбокси після операції
-  //       $("#usersTable tbody .row-check:checked").prop("checked", false);
-
-  //       // Select All
-  //       updateSelectAllCheckbox();
-  //     })
-  //     .fail(function (xhr) {
-  //       console.log("bulk FAIL:", xhr.status, xhr.responseText);
-  //       showInfoModal("An error occurred during bulk operation", "Error");
-  //     });
-  // }
 
   function validateAndRunBulk(actionType, ids, selectId) {
     $.ajax({
@@ -541,9 +339,7 @@ $(function () {
         console.log("Valid IDs:", validIds);
         console.log("Invalid IDs (deleted elsewhere):", invalidIds);
 
-        // ✅ Якщо є видалені користувачі
         if (invalidIds.length > 0) {
-          // ✅ Зняти чекбокси з видалених користувачів
           invalidIds.forEach(function (id) {
             $(`#usersTable tbody tr[data-id="${id}"] .row-check`).prop(
               "checked",
@@ -552,39 +348,35 @@ $(function () {
           });
           updateSelectAllCheckbox();
 
-          // ✅ Показати помилку залежно від дії
           if (actionType === "delete") {
             const message = `${invalidIds.length} user(s) have already been deleted by another session.`;
             showInfoModal(message, "Warning");
 
-            // ✅ Для delete — можна видалити рядки з DOM
             invalidIds.forEach(function (id) {
               $(`#usersTable tbody tr[data-id="${id}"]`).remove();
             });
             updateSelectAllCheckbox();
           } else {
-            // ✅ Для set_active/set_not_active — показати помилку, НЕ видаляти
             const actionName =
               actionType === "set_active" ? "activate" : "deactivate";
             const message = `Cannot ${actionName} ${invalidIds.length} user(s) - they have been deleted by another session.`;
             showInfoModal(message, "Error");
-
-            // ❌ НЕ видаляємо рядки, тільки знімаємо чекбокси (вже зробили вище)
           }
         }
 
         if (validIds.length === 0) {
-          return; // Нічого не робимо, якщо всі користувачі видалені
+          return;
         }
-
-        // ✅ Виконати bulk тільки з valid ids
         if (actionType !== "delete") {
           doBulkRequest(actionType, validIds, selectId);
         } else {
-          $("#confirmBulkDeleteBtn").data("bulk-ids", validIds);
-          $("#confirmBulkDeleteBtn").data("bulk-select", selectId);
-          $("#confirmBulkDeleteBtn").data("bulk-action", actionType);
-          confirmBulkDeleteModal.show();
+          showConfirmModal(
+            "Confirm bulk delete",
+            `Are you sure you want to delete ${validIds.length} selected user(s)?`,
+            () => {
+              doBulkRequest("delete", validIds, selectId);
+            }
+          );
         }
       })
       .fail(function (xhr) {
@@ -619,14 +411,12 @@ $(function () {
         console.log("Processed:", processedIds);
         console.log("Not processed:", notProcessed);
 
-        // ✅ Виконати дію для оброблених користувачів
         if (actionType === "delete") {
           processedIds.forEach(function (id) {
             console.log(`Deleting row ${id}`);
             $(`#usersTable tbody tr[data-id="${id}"]`).remove();
           });
 
-          // ✅ Для delete — також видалити необроблені рядки (вони вже були видалені)
           if (notProcessed.length > 0) {
             console.log("REMOVING NOT PROCESSED ROWS:", notProcessed);
             notProcessed.forEach(function (id) {
@@ -641,9 +431,6 @@ $(function () {
               .find("td:eq(2)")
               .html('<span class="status-dot bg-success"></span>');
           });
-
-          // ❌ Для set_active — НЕ видаляти необроблені рядки
-          // Вони вже були відфільтровані у validateAndRunBulk
         } else if (actionType === "set_not_active") {
           processedIds.forEach(function (id) {
             const row = $(`#usersTable tbody tr[data-id="${id}"]`);
@@ -655,14 +442,10 @@ $(function () {
               .find("td:eq(2)")
               .html('<span class="status-dot bg-secondary"></span>');
           });
-
-          // ❌ Для set_not_active — НЕ видаляти необроблені рядки
         }
 
-        // ✅ Зняти всі чекбокси після операції
         $("#usersTable tbody .row-check:checked").prop("checked", false);
 
-        // ✅ Оновити "Select All"
         updateSelectAllCheckbox();
       })
       .fail(function (xhr) {
@@ -686,37 +469,17 @@ $(function () {
     console.log("runBulk called", { selectId, actionType, ids });
 
     if (!ids.length) {
-      console.log("No users selected - showing warning");
-      warningNoUsersModal.show();
+      showInfoModal("Please select at least one user.", "Warning");
       return;
     }
     if (!actionType) {
-      console.log("No action selected - showing warning");
-      warningNoActionModal.show();
+      showInfoModal("Please select an action.", "Warning");
       return;
     }
 
     //перевірка існування користувачів
     validateAndRunBulk(actionType, ids, selectId);
   }
-
-  $("#confirmBulkDeleteBtn").on("click", function () {
-    const ids = $(this).data("bulk-ids") || [];
-    const selectId = $(this).data("bulk-select");
-    const actionType = $(this).data("bulk-action") || "delete";
-
-    console.log("Bulk delete confirmed", { ids, selectId, actionType });
-
-    if (!ids.length || !selectId) {
-      confirmBulkDeleteModal.hide();
-      return;
-    }
-
-    confirmBulkDeleteModal.hide();
-    doBulkRequest(actionType, ids, selectId);
-  });
-
-  console.log("Attaching bulk OK handlers with delegation...");
 
   $(document).on("click", "#btnBulkOk", function (e) {
     e.preventDefault();
@@ -731,6 +494,4 @@ $(function () {
     console.log("Bottom OK button clicked via delegation", e);
     runBulk("#bulkActionBottom");
   });
-
-  console.log("All event handlers attached");
 });

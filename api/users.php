@@ -5,11 +5,7 @@ declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 
 require __DIR__ . '/db.php';
-
-$ROLE_MAP = [
-    1 => "Admin",
-    2 => "User"
-];
+require __DIR__ . '/../config.php';
 
 function jsonOk(array $data = []): void
 {
