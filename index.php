@@ -12,17 +12,17 @@ require __DIR__ . '/includes/header.php';
     <h1 class="mb-4">User Management</h1>
 
     <!-- Top Controls -->
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <button class="btn btn-primary" id="btnAddUser">Add</button>
+    <div class="table-controls d-flex justify-content-between align-items-center mb-3">
+        <button class="btn btn-primary btn-add-user">Add</button>
 
         <div class="d-flex gap-2">
-            <select class="form-select" id="bulkAction" style="width: 220px;">
+            <select class="form-select bulk-action-select" style="width: 220px;">
                 <option value="">Please Select</option>
                 <option value="set_active">Set active</option>
                 <option value="set_not_active">Set not active</option>
                 <option value="delete">Delete</option>
             </select>
-            <button class="btn btn-secondary" id="btnBulkOk">OK</button>
+            <button class="btn btn-secondary btn-bulk-ok">OK</button>
         </div>
     </div>
 
@@ -43,7 +43,8 @@ require __DIR__ . '/includes/header.php';
                     <td><input type="checkbox" class="row-check"></td>
                     <td><?= htmlspecialchars($u['name_first']) ?> <?= htmlspecialchars($u['name_last']) ?></td>
                     <td>
-                        <span class="status-dot <?= $u['status'] ? 'bg-success' : 'bg-secondary' ?>"></span>
+                        <!-- <span class="status-dot <?= $u['status'] ? 'bg-success' : 'bg-secondary' ?>"></span> -->
+                        <span class="status-dot <?= $u['status'] ? 'active' : '' ?>"></span>
                     </td>
                     <td><?= htmlspecialchars($ROLE_MAP[$u['role']] ?? 'User') ?></td>
                     <td>
@@ -60,19 +61,20 @@ require __DIR__ . '/includes/header.php';
     </table>
 
     <!-- Bottom Controls -->
-    <div class="d-flex justify-content-between align-items-center mt-3">
-        <button class="btn btn-primary" id="btnAddUserBottom">Add</button>
+    <div class="table-controls d-flex justify-content-between align-items-center mb-3">
+        <button class="btn btn-primary btn-add-user">Add</button>
 
         <div class="d-flex gap-2">
-            <select class="form-select" id="bulkActionBottom" style="width: 220px;">
+            <select class="form-select bulk-action-select" style="width: 220px;">
                 <option value="">Please Select</option>
                 <option value="set_active">Set active</option>
                 <option value="set_not_active">Set not active</option>
                 <option value="delete">Delete</option>
             </select>
-            <button class="btn btn-secondary" id="btnBulkOkBottom">OK</button>
+            <button class="btn btn-secondary btn-bulk-ok">OK</button>
         </div>
     </div>
+
 </div>
 
 <?php
