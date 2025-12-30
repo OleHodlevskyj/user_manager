@@ -51,28 +51,30 @@ $(function () {
   }
 
   function prependUserRow(u) {
-    const statusDot = `<span class="status-dot ${
-      Number(u.status) ? "bg-success" : "bg-secondary"
-    }"></span>`;
+    const statusClass = Number(u.status) ? "active" : "";
 
-    const row = `
-      <tr data-id="${u.id}">
-        <td><input type="checkbox" class="row-check"></td>
-        <td>${escapeHtml(u.name_first)} ${escapeHtml(u.name_last)}</td>
-        <td>${statusDot}</td>
-        <td>${escapeHtml(u.role_text)}</td>
-        <td>
-          <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
-            <i class="bi bi-pencil"></i>
-          </button>
-          <button class="btn btn-sm btn-outline-danger btn-delete" type="button" title="Delete">
-            <i class="bi bi-trash"></i>
-          </button>
-        </td>
-      </tr>
-    `;
+    const $row = $("<tr>").attr("data-id", u.id);
 
-    $("#usersTable tbody").append(row);
+    $row.append(
+      $("<td>").append($('<input type="checkbox" class="row-check">')),
+      $("<td>").text(`${u.name_first} ${u.name_last}`),
+      $("<td>").append($(`<span class="status-dot ${statusClass}"></span>`)),
+      $("<td>").text(u.role_text),
+      $("<td>").html(`
+      <button class="btn btn-sm btn-outline-primary btn-edit" type="button" title="Edit">
+        <i class="bi bi-pencil"></i>
+      </button>
+      <button class="btn btn-sm btn-outline-danger btn-delete" type="button" title="Delete">
+        <i class="bi bi-trash"></i>
+      </button>
+    `)
+    );
+
+    $("#usersTable tbody").append($row);
+
+    if ($("#checkAll").is(":checked")) {
+      $row.find(".row-check").prop("checked", true);
+    }
   }
 
   function updateUserRow(userId, data) {
@@ -165,7 +167,7 @@ $(function () {
     userModal.show();
   }
 
-  $("#btnAddUser, #btnAddUserBottom").off("click").on("click", openAddModal);
+  $(".btn-add-user").off("click").on("click", openAddModal);
 
   // Edit
   $("#usersTable")
@@ -193,7 +195,7 @@ $(function () {
           $("#firstName").val(u.name_first);
           $("#lastName").val(u.name_last);
           $("#statusSwitch").prop("checked", !!Number(u.status));
-          $("#role").val(String(u.role));
+          $("#role").val(u.role);
           clearValidation();
           userModal.show();
         })
@@ -287,8 +289,6 @@ $(function () {
         });
     });
 
-  let deleteId = null;
-
   // Single delete
   $("#usersTable").on("click", ".btn-delete", function () {
     const row = $(this).closest("tr");
@@ -314,13 +314,13 @@ $(function () {
             updateSelectAllCheckbox();
           })
           .fail(function (xhr) {
-            console.log("delete FAIL:", xhr.status, xhr.responseText);
+            showInfoModal("An error occurred while deleting user.", "Error");
           });
       }
     );
   });
 
-  function validateAndRunBulk(actionType, ids, selectId) {
+  function validateAndRunBulk(actionType, ids, $selectElement) {
     $.ajax({
       url: "api/users.php?action=validate_ids",
       method: "POST",
@@ -335,9 +335,6 @@ $(function () {
 
         const validIds = res.valid_ids || [];
         const invalidIds = ids.filter((id) => !validIds.includes(id));
-
-        console.log("Valid IDs:", validIds);
-        console.log("Invalid IDs (deleted elsewhere):", invalidIds);
 
         if (invalidIds.length > 0) {
           invalidIds.forEach(function (id) {
@@ -368,13 +365,13 @@ $(function () {
           return;
         }
         if (actionType !== "delete") {
-          doBulkRequest(actionType, validIds, selectId);
+          doBulkRequest(actionType, validIds, $selectElement);
         } else {
           showConfirmModal(
             "Confirm bulk delete",
             `Are you sure you want to delete ${validIds.length} selected user(s)?`,
             () => {
-              doBulkRequest("delete", validIds, selectId);
+              doBulkRequest("delete", validIds, $selectElement);
             }
           );
         }
@@ -385,9 +382,7 @@ $(function () {
       });
   }
 
-  function doBulkRequest(actionType, ids, selectId) {
-    console.log("doBulkRequest called", { actionType, ids, selectId });
-
+  function doBulkRequest(actionType, ids, $selectElement) {
     $.ajax({
       url: "api/users.php?action=bulk",
       method: "POST",
@@ -402,7 +397,7 @@ $(function () {
           return;
         }
 
-        $(selectId).val("");
+        $selectElement.val("");
 
         const processedIds = res.processed_ids || [];
         const notProcessed = ids.filter((id) => !processedIds.includes(id));
@@ -454,8 +449,8 @@ $(function () {
       });
   }
 
-  function runBulk(selectId) {
-    const actionType = $(selectId).val();
+  function runBulk($selectElement) {
+    const actionType = $selectElement.val();
 
     //збираємо ID з DOM
     const ids = [];
@@ -465,8 +460,6 @@ $(function () {
         ids.push($(this).data("id"));
       }
     });
-
-    console.log("runBulk called", { selectId, actionType, ids });
 
     if (!ids.length) {
       showInfoModal("Please select at least one user.", "Warning");
@@ -478,20 +471,15 @@ $(function () {
     }
 
     //перевірка існування користувачів
-    validateAndRunBulk(actionType, ids, selectId);
+    validateAndRunBulk(actionType, ids, $selectElement);
   }
 
-  $(document).on("click", "#btnBulkOk", function (e) {
+  $(document).on("click", ".btn-bulk-ok", function (e) {
     e.preventDefault();
     e.stopPropagation();
-    console.log("Top OK button clicked via delegation", e);
-    runBulk("#bulkAction");
-  });
-
-  $(document).on("click", "#btnBulkOkBottom", function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log("Bottom OK button clicked via delegation", e);
-    runBulk("#bulkActionBottom");
+    const $select = $(this)
+      .closest(".table-controls")
+      .find(".bulk-action-select");
+    runBulk($select);
   });
 });
