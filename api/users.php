@@ -22,6 +22,13 @@ function jsonErr(int $code, string $message): void
     exit;
 }
 
+function getUserById($pdo, $id)
+{
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+    $stmt->execute([$id]);
+    return $stmt->fetch();
+}
+
 $action = $_GET['action'] ?? ($_POST['action'] ?? '');
 
 if ($action === '') {
@@ -42,7 +49,10 @@ switch ($action) {
         }
 
     case 'get': {
-            $id = (int)($_GET['id'] ?? 0);
+            if (!isset($_GET['id'])) {
+                jsonErr(101, 'Missing id');
+            }
+            $id = (int)$_GET['id'];
             if ($id <= 0) jsonErr(101, 'Invalid id');
 
             $stmt = $pdo->prepare("SELECT id, name_first, name_last, status, role FROM users WHERE id = ?");
@@ -58,13 +68,26 @@ switch ($action) {
         }
 
     case 'create': {
-            $first  = trim($_POST['name_first'] ?? '');
-            $last   = trim($_POST['name_last'] ?? '');
+            if (!isset($_POST['name_first'])) {
+                jsonErr(102, 'Missing name_first');
+            }
+            if (!isset($_POST['name_last'])) {
+                jsonErr(102, 'Missing name_last');
+            }
+            if (!isset($_POST['role'])) {
+                jsonErr(102, 'Missing role');
+            }
+            $first  = trim($_POST['name_first']);
+            $last   = trim($_POST['name_last']);
             $status = isset($_POST['status']) ? (int)$_POST['status'] : 0;
-            $role   = $_POST['role'] ? (int)$_POST['role'] : 2;
+            $role   = (int)$_POST['role'];
 
-            if ($first === '' || $last === '' || !isset($ROLE_MAP[$role])) {
-                jsonErr(102, 'Validation error: empty or invalid fields');
+            if ($first === '' || $last === '') {
+                jsonErr(102, 'Empty name_first or name_last');
+            }
+
+            if (!isset($ROLE_MAP[$role])) {
+                jsonErr(102, 'Invalid role');
             }
 
             $stmt = $pdo->prepare("INSERT INTO users (name_first, name_last, status, role) VALUES (?,?,?,?)");
@@ -80,21 +103,35 @@ switch ($action) {
         }
 
     case 'update': {
-            $id     = (int)($_POST['id'] ?? 0);
-            $first  = trim($_POST['name_first'] ?? '');
-            $last   = trim($_POST['name_last'] ?? '');
+            if (!isset($_POST['id'])) {
+                jsonErr(101, 'Missing id');
+            }
+            if (!isset($_POST['name_first'])) {
+                jsonErr(102, 'Missing name_first');
+            }
+            if (!isset($_POST['name_last'])) {
+                jsonErr(102, 'Missing name_last');
+            }
+            if (!isset($_POST['role'])) {
+                jsonErr(102, 'Missing role');
+            }
+            $id     = (int)$_POST['id'];
+            $first  = trim($_POST['name_first']);
+            $last   = trim($_POST['name_last']);
             $status = isset($_POST['status']) ? (int)$_POST['status'] : 0;
-            $role   = $_POST['role'] ? (int)$_POST['role'] : 2;
+            $role   = (int)$_POST['role'];
 
             if ($id <= 0) jsonErr(101, 'Invalid id');
-            if ($first === '' || $last === '' || !isset($ROLE_MAP[$role])) {
+            if ($first === '' || $last === '') {
                 jsonErr(102, 'Validation error: empty or invalid fields');
             }
 
+            if (!isset($ROLE_MAP[$role])) {
+                jsonErr(102, 'Invalid role');
+            }
             // існування користувача
-            $stmt = $pdo->prepare("SELECT COUNT(*) FROM users WHERE id=?");
-            $stmt->execute([$id]);
-            if ((int)$stmt->fetchColumn() === 0) {
+            $user = getUserById($pdo, $id);
+            if (!$user) {
                 jsonErr(107, 'User not found for update');
             }
 
@@ -110,13 +147,15 @@ switch ($action) {
 
     case 'validate_ids': {
             //перевірка які ID існують в базі
-            $ids = $_POST['ids'] ?? [];
-
-            if (!is_array($ids) || count($ids) === 0) {
-                jsonErr(103, 'No ids provided');
+            if (!isset($_POST['ids']) || !is_array($_POST['ids'])) {
+                jsonErr(103, 'Missing or invalid ids');
             }
 
-            $ids = array_map('intval', $ids);
+            $ids = array_map('intval', $_POST['ids']);
+            if (empty($ids)) {
+                jsonOk(['valid_ids' => []]);
+            }
+
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
             // знайти які ID в базі
@@ -129,8 +168,17 @@ switch ($action) {
         }
 
     case 'delete': {
-            $id = (int)($_POST['id'] ?? 0);
+            if (!isset($_POST['id'])) {
+                jsonErr(101, 'Missing id');
+            }
+
+            $id = (int)$_POST['id'];
             if ($id <= 0) jsonErr(101, 'Invalid id');
+
+            $user = getUserById($pdo, $id);
+            if (!$user) {
+                jsonErr(100, 'User not found');
+            }
 
             $stmt = $pdo->prepare("DELETE FROM users WHERE id=?");
             $stmt->execute([$id]);
@@ -140,22 +188,28 @@ switch ($action) {
         }
 
     case 'bulk': {
-            $actionType = $_POST['action_type'] ?? '';
-            $ids = $_POST['ids'] ?? [];
+            if (!isset($_POST['action_type'])) {
+                jsonErr(104, 'Missing action_type');
+            }
+            if (!isset($_POST['ids']) || !is_array($_POST['ids'])) {
+                jsonErr(103, 'Missing or invalid ids');
+            }
+            $actionType = $_POST['action_type'];
+            $ids = array_map('intval', $_POST['ids']);
 
-            if (!is_array($ids) || count($ids) === 0) {
-                jsonErr(103, 'No ids');
+            if (empty($ids)) {
+                jsonOk(['processed_ids' => []]);
             }
 
-            $ids = array_map('intval', $ids);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
             $stmt = $pdo->prepare("SELECT id FROM users WHERE id IN ($placeholders)");
             $stmt->execute($ids);
             $existingIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $existingIds = array_map('intval', $existingIds);
 
-            if (count($existingIds) === 0) {
-                jsonErr(106, 'None of the selected users exist');
+            if (empty($existingIds)) {
+                jsonOk(['processed_ids' => []]);
             }
 
             // новий список placeholders тільки для існуючих
